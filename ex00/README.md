@@ -68,38 +68,35 @@ Full instructions: https://docs.astral.sh/uv/getting-started/installation/
 
 ---
 
-## DVC
+## pixi (optional)
 
-Data Version Control — version your data and ML pipelines alongside your code.
+A fast, cross-platform package manager for reproducible environments. Optional for this workshop — install it if you'd like to follow along with the pixi-based examples.
 
 <details>
-<summary>macOS</summary>
+<summary>macOS / Linux</summary>
 
 ```bash
-brew install dvc
+curl -fsSL https://pixi.sh/install.sh | sh
 ```
 
-Or via pip: `pip install dvc`
-Full instructions: https://dvc.org/doc/install/macos
+If your system doesn't have `curl`, you can use `wget`:
+
+```bash
+wget -qO- https://pixi.sh/install.sh | sh
+```
+
+Full instructions: https://pixi.prefix.dev/latest/installation/
 
 </details>
 
 <details>
 <summary>Windows</summary>
 
-Download the installer from https://dvc.org/doc/install/windows
-Or via pip: `pip install dvc`
-
-</details>
-
-<details>
-<summary>Linux</summary>
-
-```bash
-pip install dvc
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm -useb https://pixi.sh/install.ps1 | iex"
 ```
 
-Or see https://dvc.org/doc/install/linux for package manager options.
+Full instructions: https://pixi.prefix.dev/latest/installation/
 
 </details>
 
@@ -107,10 +104,15 @@ Or see https://dvc.org/doc/install/linux for package manager options.
 
 ### Success Criteria
 
-Run the following — all three should print a version number:
+Run the following — both should print a version number:
 
 ```bash
 git --version
 uv --version
-dvc --version
+```
+
+If you installed pixi, this should also print a version number:
+
+```bash
+pixi --version
 ```
