@@ -2,6 +2,11 @@
 
 ### Exercise
 
+0. Get familiar with the code first:
+- Open and read the scripts: `generate_data.py`, `fit.py`, `evaluate.py`, and `visualize.py`
+- For each one, try to understand what it does and what inputs/outputs it expects
+- Ask yourself: how would you run them, and in what order?
+
 1. Run the following scripts in order:
 - `uv run -m ex02.generate_data`
 - `uv run -m ex02.fit`
