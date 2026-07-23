@@ -25,6 +25,6 @@
 
 **There must be a better way!**
 
-4. (Bonus) Write a function (ex02/compare.py) that compares the results of the different polyonomial fits
+4. (Bonus) Write a function (ex02/compare.py) that compares the results of the different polynomial fits
 
 ### Success criteria: We can run the full pipeline and get consistent results
