@@ -9,128 +9,135 @@ The goal is to replace `pipeline.py` with a DVC DAG so that stages re-run only w
 
 ## Steps
 
+### 0. Install DVC
+
+Add DVC as a dev dependency (pinned in `uv.lock`, like numpy/matplotlib), then call it with `uv run dvc ...`:
+
+```bash
+uv add --dev dvc
+```
+
+*Hint: prefer `uv add --dev dvc` over `uv tool install dvc` — the latter installs it globally and isn't captured by the lockfile.*
+
 ### 1. Initialise DVC
 
 ```bash
-dvc init
+uv run dvc init
 git add .dvc .dvcignore
 git commit -m "initialise dvc"
 ```
 
-### 2. Create `dvc.yaml`
+### 2. Map the pipeline
 
-Create a `dvc.yaml` file at the **project root** that declares four stages: `generate_data`, `fit`, `evaluate`, `visualize`.
+Sketch how data flows before writing any YAML:
 
-Each stage needs:
-- `cmd` — the command to run (e.g. `uv run -m ex04.generate_data`)
-- `deps` — input files the stage depends on
-- `outs` — files produced by the stage
-- `params` — parameters read from `ex04/config.toml` (so DVC knows which config changes affect which stage)
-
-For the `evaluate` stage, use `metrics` instead of `outs`:
-
-```yaml
-metrics:
-  - data/metrics.json:
-      cache: false
+```
+generate_data ─> data/input.csv ─> fit ─> data/coefficients.json ─┬─> evaluate ─> data/metrics.json
+                                                                  └─> visualize ─> data/plot.png
 ```
 
-Suggested structure:
+### 3. Write `dvc.yaml` (at the project root)
+
+Declare the four stages. For each stage, ask yourself:
+
+- **cmd** — how do I run it? (e.g. `uv run -m ex04.generate_data`)
+- **deps** — what files does it read? (its own `.py` + any outputs of earlier stages)
+- **outs / metrics** — what files does it produce?
+- **params** — which keys in `ex04/config.toml` does it use?
+
+Hints:
+- List config values under `params:`, *not* `deps:` — DVC re-runs a stage only when a listed param changes.
+- Chain stages by adding the previous stage's output to the next stage's `deps` (e.g. `fit` depends on `data/input.csv`).
+- For `evaluate`, use `metrics:` instead of `outs:` with `cache: false`, so the metrics file is comparable and stays in git.
+- For `visualize`, the plot is a plain `out`.
+
+<details>
+<summary>Stage skeleton (fill in the blanks)</summary>
 
 ```yaml
 stages:
   generate_data:
-    cmd: ...
+    cmd: uv run -m ex04.generate_data
+    deps:
+      - ex04/generate_data.py
     params:
       - ex04/config.toml:
           - generate_data.<param>
-    deps:
-      - ex04/generate_data.py
     outs:
       - data/input.csv
-
-  fit:
-    ...
+  # fit, evaluate, visualize ...
 ```
+</details>
 
-### 3. Run the pipeline
+### 4. Run the pipeline as an experiment
 
 ```bash
-dvc repro
-git add dvc.lock metrics.json
-git commit -m "run pipeline"
+uv run dvc exp run
 ```
 
-DVC executes all stages in order, caches the outputs, and records the run in `dvc.lock`.
+DVC runs the stages in dependency order and records the run (params + metrics) as an experiment. See the graph with `uv run dvc dag`.
 
-### 4. Inspect the metrics
+### 5. Inspect the metrics
 
 ```bash
-dvc metrics show
+uv run dvc metrics show
 ```
 
-### 5. Run an experiment with a different parameter
+### 6. Run a second experiment
 
-Change `degree` in `ex04/config.toml`, then re-run and commit:
+Change `degree` in `ex04/config.toml`, then run again:
 
 ```bash
-dvc repro
-git add ex04/config.toml dvc.lock metrics.json
-git commit -m "experiment: degree=<your value>"
+uv run dvc exp run
 ```
 
-Only the stages that depend on `fit.degree` will re-run (`fit`, `evaluate`, `visualize`). `generate_data` stays cached.
+Only the stages affected by `fit.degree` re-run (`fit`, `evaluate`, `visualize`); `generate_data` stays cached.
 
-### 6. Compare metrics across runs
+### 7. Compare experiments
 
 ```bash
-dvc metrics diff
+uv run dvc exp show
 ```
 
-### 7. Set up a local remote
+A table of every experiment with its params and metrics — see how `degree` moved MSE / RMSE / R². (`uv run dvc exp diff` compares two specific runs.)
+
+To keep an experiment, commit it:
 
 ```bash
-dvc remote add -d local ./dvc-remote
+git add dvc.lock data/metrics.json ex04/config.toml
+git commit -m "experiment: degree=<value>"
+```
+
+### 8. Set up a local remote
+
+A remote is where DVC stores the actual data files (git only stores small pointers). We use a local folder here; real projects use S3, GCS, SSH, etc.
+
+```bash
+uv run dvc remote add -d local ./dvc-remote
 git add .dvc/config
 git commit -m "add local dvc remote"
 ```
 
-DVC creates the `dvc-remote/` folder automatically — you don't need to create it yourself. The `-d` flag makes it the default remote.
-
-### 8. Push data to the remote
+### 9. Push data to the remote
 
 ```bash
-dvc push
+uv run dvc push
 ```
 
-DVC uploads the cached outputs (`input.csv`, `coefficients.json`, `plot.png`) to `./dvc-remote`.
-
-### 9. Simulate a fresh clone
-
-Remove the local data and pull it back from the remote — this is what a colleague does after cloning the repo:
+### 10. Simulate a fresh clone
 
 ```bash
 rm -rf data/
-dvc pull
+uv run dvc pull
 ls data/
 ```
 
-The files are restored from the remote without re-running the pipeline.  
-This is the core idea: **git tracks code, DVC tracks data**.
+The data is restored from the remote without re-running the pipeline.
+**git tracks code, DVC tracks data.**
 
 ---
 
-## Note: change in `evaluate.py`
+## Note: `evaluate.py` writes metrics
 
-In ex02 and ex03, `evaluate.py` only printed metrics to the terminal.  
-For DVC to track and compare metrics across experiments, they need to be written to a file.
-
-`evaluate.py` has been updated to save results to `data/metrics.json`:
-
-```python
-with open(METRICS_PATH, "w") as f:
-    json.dump(metrics, f, indent=2)
-```
-
-Without this file, `dvc metrics show` and `dvc metrics diff` have nothing to read.
+In ex02/ex03 `evaluate.py` only printed metrics. Here it also saves them to `data/metrics.json` so DVC can track and compare them across experiments — without that file, `dvc metrics show` / `dvc exp show` have nothing to read.
 
