@@ -1,0 +1,27 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# macos
+.DS_Store
+
+# data
+data/
+dvc-remote/
+
+# AI agent configuration
+AGENTS.md
+CLAUDE.md
+.cursor/
+.copilot/
+.github/copilot-instructions.md
+.aider*
+.continue/
+.claude/
