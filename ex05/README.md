@@ -1,57 +1,102 @@
-# Containerise the Pipeline
+# Reproducibility with pixi
 
-A container packages your code, dependencies, and environment into a single image that runs identically anywhere. It is the final answer to "works on my machine."
+`pixi` is an alternative to `uv`: a fast, cross-platform package & environment manager built on the **conda-forge** ecosystem, with its own lockfile (`pixi.lock`) and a built-in task runner.
 
-### Success criteria: Build the image and run the pipeline inside a container
+The goal of this exercise is to run the **same code from ex01–ex04** using pixi instead of uv — same reproducibility story, different tool.
 
----
-
-## Build the image
-
-```bash
-docker build -t pycon-workshop .
-```
-
-This reads the `Dockerfile` at the project root and creates an image called `pycon-workshop`.
-
-## Run the pipeline
-
-```bash
-docker run -v $(pwd)/data:/app/data pycon-workshop
-```
-
-The `-v` flag mounts your local `data/` folder into the container so the output files are saved on your machine after the container exits.
-
-## Check the outputs
-
-```bash
-ls data/
-```
-
-You should see `input.csv`, `coefficients.json`, `metrics.json`, and `plot.png`.
+### Success criteria: Run the dice example and the fitting pipeline through pixi tasks, backed by a committed `pixi.lock`
 
 ---
 
-## How the Dockerfile works
+## Steps
 
-```dockerfile
-FROM python:3.13-slim                          # base OS + Python
-COPY --from=ghcr.io/astral-sh/uv:latest ...   # add uv
-COPY pyproject.toml uv.lock ./                 # copy dependency spec
-RUN uv sync --frozen --no-dev                  # install exact versions from lockfile
-COPY ex04/ ex04/                               # copy pipeline code
-CMD ["uv", "run", "-m", "ex04.pipeline"]       # default command
+### 0. Install pixi
+
+```bash
+curl -fsSL https://pixi.sh/install.sh | bash
 ```
 
-The lockfile (`uv.lock`) is the key — it guarantees the container installs the exact same package versions every time, on any machine.
+*(or `brew install pixi`)*
 
-## Useful commands
+### 1. Initialise a pixi project
 
-| Command | What it does |
-|---|---|
-| `docker build -t <name> .` | build an image from the Dockerfile |
-| `docker run <name>` | run a container from an image |
-| `docker run -v <host>:<container> <name>` | mount a folder from host into container |
-| `docker images` | list built images |
-| `docker ps -a` | list all containers (including stopped) |
-| `docker rmi <name>` | delete an image |
+```bash
+pixi init
+```
+
+This creates a `pixi.toml` manifest (project metadata, platforms, dependencies, tasks) and, on first install, a `pixi.lock`.
+
+*Hint: pixi can also live inside your existing `pyproject.toml` under a `[tool.pixi]` table — but keep it separate here so it doesn't clash with the uv setup from the earlier exercises.*
+
+### 2. Add the dependencies
+
+The exercises need `numpy` and `matplotlib` (and `dvc` for ex04):
+
+```bash
+pixi add numpy matplotlib
+pixi add dvc
+```
+
+These come from conda-forge and are written into `pixi.toml` + pinned in `pixi.lock`.
+
+*Hint: for a package that only exists on PyPI, use `pixi add --pypi <name>`.*
+
+### 3. Run a single script
+
+The uv commands from the earlier exercises map directly — swap `uv run` for `pixi run`:
+
+```bash
+pixi run python -m ex01.e01      # was: uv run -m ex01.e01
+pixi run python -m ex04.pipeline # was: uv run -m ex04.pipeline
+```
+
+`pixi run` executes inside the locked environment. Use `pixi shell` if you want to activate it interactively.
+
+### 4. Define tasks
+
+Instead of typing module paths, declare **tasks** in `pixi.toml`:
+
+```toml
+[tasks]
+dice = "python -m ex01.e01"
+generate = "python -m ex04.generate_data"
+fit = { cmd = "python -m ex04.fit", depends-on = ["generate"] }
+evaluate = { cmd = "python -m ex04.evaluate", depends-on = ["fit"] }
+visualize = { cmd = "python -m ex04.visualize", depends-on = ["fit"] }
+pipeline = { depends-on = ["evaluate", "visualize"] }
+```
+
+Now run them by name — pixi resolves the dependency order automatically:
+
+```bash
+pixi run dice
+pixi run pipeline
+```
+
+*This is pixi's built-in version of the DAG idea from ex04: `depends-on` chains the stages together.*
+
+### 5. Lock and share
+
+```bash
+git add pixi.toml pixi.lock
+git commit -m "add pixi environment"
+```
+
+`pixi.lock` pins exact package versions **and** solves for each platform, so a colleague on a different OS gets the same environment with a single `pixi install`.
+
+---
+
+## uv → pixi cheat sheet
+
+| Task | uv | pixi |
+|---|---|---|
+| Init project | `uv init` | `pixi init` |
+| Add dependency | `uv add numpy` | `pixi add numpy` |
+| Add PyPI-only dep | `uv add <pkg>` | `pixi add --pypi <pkg>` |
+| Run a module | `uv run -m ex01.e01` | `pixi run python -m ex01.e01` |
+| Run a named task | *(n/a)* | `pixi run pipeline` |
+| Activate the env | `source .venv/bin/activate` | `pixi shell` |
+| Install from lockfile | `uv sync` | `pixi install` |
+| Lockfile | `uv.lock` | `pixi.lock` |
+
+Same principle throughout: **the lockfile guarantees everyone gets the exact same environment.**
